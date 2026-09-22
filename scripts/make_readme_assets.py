@@ -28,6 +28,7 @@ from blockblast.env.observation import encode_observation
 
 OUT = Path("docs/images")
 CHECKPOINTS = (
+    Path("models/ppo_safe/final.zip"),
     Path("models/ppo_v2/best_model.zip"),
     Path("models/ppo_v1/best_model.zip"),
 )
@@ -41,6 +42,7 @@ MODES = {
         "grid": "#e4e3df",
         "s1": "#2a78d6",
         "s2": "#eb6834",
+        "s3": "#1a9e6f",
         "base": "#a8a7a2",
     },
     "dark": {
@@ -50,6 +52,7 @@ MODES = {
         "grid": "#3a3a37",
         "s1": "#3987e5",
         "s2": "#d95926",
+        "s3": "#2bb98a",
         "base": "#6f6e69",
     },
 }
@@ -213,6 +216,7 @@ def results_chart(plt) -> None:  # type: ignore[no-untyped-def]
         ("Greedy", "greedy_default"),
         ("PPO v1\n(CNN policy)", "maskable_ppo_ppo_v1_best_model"),
         ("PPO v2\n(afterstate)", "maskable_ppo_ppo_v2_best"),
+        ("PPO v3\n(survival)", "maskable_ppo_ppo_safe40_final"),
     ]:
         p = Path(f"data/eval/{file}.json")
         if p.exists():
@@ -228,7 +232,13 @@ def results_chart(plt) -> None:  # type: ignore[no-untyped-def]
         names = [r[0] for r in rows]
         vals = [r[1] for r in rows]
         colors = [
-            m["s1"] if n.startswith("PPO v2") else m["s2"] if n.startswith("PPO v1") else m["base"]
+            m["s3"]
+            if n.startswith("PPO v3")
+            else m["s1"]
+            if n.startswith("PPO v2")
+            else m["s2"]
+            if n.startswith("PPO v1")
+            else m["base"]
             for n in names
         ]
         bars = ax.bar(names, vals, width=0.56, color=colors, edgecolor=m["surface"], linewidth=2)
@@ -295,6 +305,7 @@ def training_chart(plt) -> None:  # type: ignore[no-untyped-def]
     series = [
         ("PPO v1 · CNN policy", "ppo_v1", "s2"),
         ("PPO v2 · afterstate policy", "ppo_v2", "s1"),
+        ("PPO v3 · survival reward", "ppo_safe", "s3"),
     ]
     for mode, m in MODES.items():
         fig, ax = plt.subplots(figsize=(7.2, 3.8), dpi=150)
