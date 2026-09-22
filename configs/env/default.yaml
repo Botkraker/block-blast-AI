@@ -1,3 +1,5 @@
 max_steps: 10000
 points_per_cell: 1
 points_per_line: 10
+mid_start_prob: 0.0       # training only: share of games started from a crowded board seen earlier
+mid_start_min_cells: 24   # a board counts as crowded from this many filled cells

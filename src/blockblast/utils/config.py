@@ -16,6 +16,8 @@ class EnvConfig:
     max_steps: int = 10_000
     points_per_cell: int = 1
     points_per_line: int = 10
+    mid_start_prob: float = 0.0  # training only: share of games started from a crowded board
+    mid_start_min_cells: int = 24
 
 
 @dataclass
@@ -33,6 +35,8 @@ class AgentConfig:
     name: str = "maskable_ppo"
     seed: int = 0
     policy: str = "afterstate"  # afterstate | cnn
+    # afterstate greedy lean: auto (board if reward=safe, else score) | score | board | lookahead
+    prior: str = "auto"
     features_dim: int = 256
     ppo: dict[str, Any] = field(default_factory=dict)
 
@@ -49,6 +53,10 @@ class TrainConfig:
     device: str = "auto"
     deterministic_torch: bool = False
     resume: str | None = None  # "auto" = latest models/<run_name>/ckpt_*, or a .zip path
+    # Curriculum: hard pieces (O3, I5h, I5v) are dealt with weight curriculum_hard_start at
+    # step 0, rising linearly to 1.0 (the real game) at curriculum_steps. 0 = off.
+    curriculum_hard_start: float = 0.25
+    curriculum_steps: int = 0
 
 
 @dataclass

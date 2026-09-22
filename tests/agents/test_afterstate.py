@@ -170,6 +170,65 @@ def test_board_prior_prefers_empty_board(compact: bool) -> None:
     assert torch.isclose(logits[8], torch.tensor(-1.0))  # 8 cells left
 
 
+def test_n_dead_matches_engine() -> None:
+    """Lookahead prior: stranded-piece counts equal the engine's fit check on every afterstate."""
+    from blockblast.engine.game import is_game_over
+
+    ext = AfterstateExtractor(observation_space(), hidden=8, value_dim=8, prior="lookahead")
+    obs, masks = _game_batch(8)
+    after = ext.afterstates(obs)[0]  # (b, 192, 64)
+    rest = obs[:, 1:4].reshape(-1, 3, 64)[:, ext.other_slots].repeat_interleave(64, dim=1)
+    dead = ext.n_dead(after, rest)
+    rng = np.random.default_rng(0)
+    checked = 0
+    for i in rng.choice(len(obs), size=60, replace=False):
+        o = obs[i].numpy()
+        hand = [_piece_id(o[1 + k]) for k in range(3)]
+        for a in np.flatnonzero(masks[i].numpy()):
+            slot = int(a) // 64
+            board = int(sum(1 << j for j in np.flatnonzero(after[i, a].numpy())))
+            others = [hand[k] for k in range(3) if k != slot and hand[k] is not None]
+            expected = sum(is_game_over(board, (p,)) for p in others)
+            assert dead[i, a] == expected
+            checked += 1
+    assert checked > 500
+
+
+def _piece_id(plane: np.ndarray) -> int | None:
+    from blockblast.engine.pieces import PIECE_CATALOGUE
+
+    cells = tuple((int(r), int(c)) for r, c in zip(*np.nonzero(plane), strict=True))
+    if not cells:
+        return None
+    return next(p.piece_id for p in PIECE_CATALOGUE if tuple(sorted(p.cells)) == cells)
+
+
+def test_lookahead_prior_compact_matches_dense() -> None:
+    ext = AfterstateExtractor(observation_space(), hidden=16, value_dim=8, prior="lookahead")
+    obs, masks = _game_batch(4)
+    compact = ext.action_logits(obs, compact=True)
+    dense = ext.action_logits(obs, compact=False)
+    torch.testing.assert_close(compact[masks], dense[masks], rtol=1e-5, atol=1e-5)
+
+
+def test_lookahead_prior_avoids_stranding_a_piece() -> None:
+    """The lookahead lean equals the board lean minus 4 per hand piece left without a spot."""
+    exts = {}
+    for prior in ("board", "lookahead"):
+        torch.manual_seed(0)
+        exts[prior] = AfterstateExtractor(observation_space(), hidden=16, value_dim=8, prior=prior)
+    obs = torch.zeros(1, 5, 8, 8)
+    obs[0, 0] = 1.0
+    obs[0, 0, :3, :3] = 0.0  # a free 3x3 corner ...
+    for k in range(3, 8):
+        obs[0, 0, k, k] = 0.0  # ... and a diagonal of holes, so no line is full
+    obs[0, 1, 0, 0] = 1.0  # slot 0: mono
+    obs[0, 2, :3, :3] = 1.0  # slot 1: O3, fits only in the corner
+    diff = exts["lookahead"].action_logits(obs)[0] - exts["board"].action_logits(obs)[0]
+    assert torch.isclose(diff[0], torch.tensor(-4.0))  # mono in the corner strands the O3
+    assert torch.isclose(diff[4 * 8 + 4], torch.tensor(0.0))  # mono at (4, 4) does not
+
+
 def test_policy_outputs_192_logits() -> None:
     policy = AfterstatePolicy(
         observation_space(),

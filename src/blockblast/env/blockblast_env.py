@@ -1,7 +1,16 @@
-"""Gymnasium environment wrapping ``engine.Game`` with invalid-action masking."""
+"""Gymnasium environment wrapping ``engine.Game`` with invalid-action masking.
+
+Two training-only options, both off by default (evaluation always plays the real game):
+
+- ``mid_start_prob``: each env remembers crowded boards (``>= mid_start_min_cells`` filled)
+  from its own past games, and starts that share of new games from one of them.
+- ``hard_piece_weight`` (attribute, set by the curriculum callback): < 1 deals the hardest
+  pieces less often in the games that start afterwards.
+"""
 
 from __future__ import annotations
 
+from collections import deque
 from typing import Any
 
 import gymnasium
@@ -27,6 +36,8 @@ class BlockBlastEnv(gymnasium.Env[Obs, int]):
         score_config: ScoreConfig = ScoreConfig(),
         max_steps: int = 10_000,
         render_mode: str | None = None,
+        mid_start_prob: float = 0.0,
+        mid_start_min_cells: int = 24,
     ) -> None:
         if render_mode is not None and render_mode not in self.metadata["render_modes"]:
             raise ValueError(f"unsupported render_mode {render_mode!r}")
@@ -39,6 +50,11 @@ class BlockBlastEnv(gymnasium.Env[Obs, int]):
         self._mask: npt.NDArray[np.bool_] = np.zeros(192, dtype=np.bool_)
         self._lines_total = 0
         self._max_combo = 0
+        self.mid_start_prob = mid_start_prob
+        self.mid_start_min_cells = mid_start_min_cells
+        self.hard_piece_weight = 1.0
+        # ponytail: per-env buffer of this env's own boards; share one pool if diversity matters
+        self._crowded: deque[int] = deque(maxlen=1000)
 
     @property
     def game(self) -> Game:
@@ -48,7 +64,19 @@ class BlockBlastEnv(gymnasium.Env[Obs, int]):
         self, *, seed: int | None = None, options: dict[str, Any] | None = None
     ) -> tuple[Obs, dict[str, Any]]:
         super().reset(seed=seed)
-        state = self._game.reset(self.np_random)
+        state = self._game.reset(self.np_random, hard_weight=self.hard_piece_weight)
+        # Rng is only consumed when mid starts are on, so default seeded games are unchanged.
+        if (
+            self.mid_start_prob > 0
+            and self._crowded
+            and self.np_random.random() < self.mid_start_prob
+        ):
+            board = self._crowded[int(self.np_random.integers(len(self._crowded)))]
+            mid = self._game.reset(self.np_random, board=board, hard_weight=self.hard_piece_weight)
+            if not mid.game_over:
+                state = mid
+            else:  # the dealt hand fits nowhere on that board: play a normal game
+                state = self._game.reset(self.np_random, hard_weight=self.hard_piece_weight)
         self._lines_total = 0
         self._max_combo = 0
         self._mask = action_mask(state)
@@ -61,6 +89,12 @@ class BlockBlastEnv(gymnasium.Env[Obs, int]):
         self._lines_total += result.n_lines
         self._max_combo = max(self._max_combo, state.combo_streak)
         terminated = state.game_over
+        if (
+            self.mid_start_prob > 0
+            and not terminated
+            and state.board.bit_count() >= self.mid_start_min_cells
+        ):
+            self._crowded.append(state.board)
         truncated = not terminated and state.moves >= self.max_steps
         reward = compute_reward(result, terminated, self.reward_config)
         self._mask = action_mask(state)

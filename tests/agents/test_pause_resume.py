@@ -83,3 +83,24 @@ def test_resume_errors(tmp_path: Path) -> None:
         train(tiny(tmp_path, 256, "train.resume=auto"))
     with pytest.raises(FileNotFoundError):
         train(tiny(tmp_path, 256, f"train.resume={tmp_path.as_posix()}/missing.zip"))
+
+
+def test_resume_applies_gamma_prior_and_training_options(tmp_path: Path) -> None:
+    train(tiny(tmp_path, 256, "reward=safe"))
+    first = MaskablePPO.load(str(tmp_path / "models" / "pr" / "final.zip"), device="cpu")
+    assert first.policy.features_extractor.prior == "board"  # auto -> board for reward=safe
+    final = train(
+        tiny(
+            tmp_path,
+            512,
+            "reward=safe",
+            f"train.resume={tmp_path.as_posix()}/models/pr/final.zip",
+            "agent.ppo.gamma=0.999",
+            "agent.prior=lookahead",
+            "env.mid_start_prob=0.5",
+            "train.curriculum_steps=1000",
+        )
+    )
+    model = MaskablePPO.load(str(final), device="cpu")
+    assert model.num_timesteps == 512 and model.gamma == 0.999
+    assert model.policy.features_extractor.prior == "lookahead"

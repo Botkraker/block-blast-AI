@@ -8,3 +8,5 @@ n_eval_episodes: 50        # validation seeds from 900_000
 device: auto               # cuda if available (GTX 1650 / Colab), else cpu
 deterministic_torch: false
 resume: null               # auto = continue from the latest models/<run_name>/ckpt_*; or a .zip path
+curriculum_hard_start: 0.25  # hard pieces (O3, I5h, I5v) dealt at this weight at step 0 ...
+curriculum_steps: 0          # ... rising to the real game (1.0) by this step. 0 = off

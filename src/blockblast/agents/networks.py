@@ -53,6 +53,8 @@ def _shift_matrix() -> torch.Tensor:
 _OTHER_SLOTS = torch.tensor([[1, 2], [0, 2], [0, 1]])
 
 ILLEGAL_LOGIT: Final[float] = -1e8  # same value MaskableCategorical writes for masked actions
+DEAD_PIECE_PENALTY: Final[float] = 4.0  # lookahead prior: a stranded hand piece ~ 32 cells
+PRIORS: Final[tuple[str, ...]] = ("score", "board", "lookahead")
 
 
 class AfterstateExtractor(BaseFeaturesExtractor):
@@ -63,8 +65,9 @@ class AfterstateExtractor(BaseFeaturesExtractor):
     ``(afterstate, remaining hand, lines, new combo, Δscore)``; the logit adds
     ``alpha · prior`` so the initial policy leans toward a greedy rule: ``prior="score"``
     uses Δscore/10 (most points), ``prior="board"`` uses −filled cells/8 (emptiest board,
-    for the ``safe`` reward). Illegal actions produce meaningless logits and are removed by
-    the action mask.
+    for the ``safe`` reward), and ``prior="lookahead"`` also subtracts ``DEAD_PIECE_PENALTY``
+    for each remaining hand piece that fits nowhere on the resulting board. Illegal actions
+    produce meaningless logits and are removed by the action mask.
 
     Output: ``[192 action logits | value_dim CNN features of the current state]``.
     """
@@ -73,6 +76,11 @@ class AfterstateExtractor(BaseFeaturesExtractor):
     shift_t: torch.Tensor
     in_board: torch.Tensor
     other_slots: torch.Tensor
+    pos: torch.Tensor
+    pos_row: torch.Tensor
+    pos_col: torch.Tensor
+    pow2: torch.Tensor
+    one_to_8: torch.Tensor
 
     def __init__(
         self,
@@ -82,7 +90,7 @@ class AfterstateExtractor(BaseFeaturesExtractor):
         prior: str = "score",
     ) -> None:
         super().__init__(observation_space, 192 + value_dim)
-        if prior not in ("score", "board"):
+        if prior not in PRIORS:
             raise ValueError(f"unknown prior {prior!r}")
         self.prior = prior
         shift = _shift_matrix()
@@ -92,6 +100,12 @@ class AfterstateExtractor(BaseFeaturesExtractor):
         self.register_buffer("shift_t", shift_t, persistent=False)
         self.register_buffer("in_board", shift.reshape(64, 64, 64).sum(-1), persistent=False)
         self.register_buffer("other_slots", _OTHER_SLOTS.clone(), persistent=False)
+        pos = torch.arange(64)
+        self.register_buffer("pos", pos, persistent=False)  # anchor bit index row·8 + col
+        self.register_buffer("pos_row", (pos // 8).float(), persistent=False)
+        self.register_buffer("pos_col", (pos % 8).float(), persistent=False)
+        self.register_buffer("pow2", torch.ones(64, dtype=torch.int64) << pos, persistent=False)
+        self.register_buffer("one_to_8", torch.arange(1.0, 9.0), persistent=False)
         self.after_in = nn.Linear(64, hidden)
         self.rest_in = nn.Linear(128, hidden, bias=False)  # the 2 remaining hand planes
         self.scalar_in = nn.Linear(3, hidden, bias=False)  # lines, new combo, Δscore/10
@@ -126,8 +140,31 @@ class AfterstateExtractor(BaseFeaturesExtractor):
         new_combo = torch.where(n_lines > 0, torch.clamp(combo + 1.0, max=8.0), 0.0)
         return after, n_lines, delta, new_combo
 
-    def _prior(self, after: torch.Tensor, delta: torch.Tensor) -> torch.Tensor:
-        return delta if self.prior == "score" else after.sum(-1) / -8.0
+    def _prior(self, after: torch.Tensor, delta: torch.Tensor, rest: torch.Tensor) -> torch.Tensor:
+        """Greedy lean per action. ``after`` (..., 64), ``rest`` (..., 2, 64) other hand pieces."""
+        if self.prior == "score":
+            return delta
+        lean = after.sum(-1) / -8.0
+        if self.prior == "lookahead":
+            lean = lean - DEAD_PIECE_PENALTY * self.n_dead(after, rest)
+        return lean
+
+    def n_dead(self, after: torch.Tensor, rest: torch.Tensor) -> torch.Tensor:
+        """(...) count of pieces in ``rest`` (..., 2, 64) that fit nowhere on ``after`` (..., 64).
+
+        Exact, on 64-bit bitboards: a piece anchored at (0, 0) fits at ``pos`` iff it stays in
+        bounds (row + height <= 8, col + width <= 8) and ``(piece << pos) & board == 0``.
+        Placing one remaining piece can clear lines for the other; this check ignores that.
+        """
+        board = (after.long() * self.pow2).sum(-1)  # distinct bits: the sum is an exact OR
+        piece = (rest.long() * self.pow2).sum(-1)  # (..., 2)
+        grid = rest.reshape(*rest.shape[:-1], 8, 8)
+        height = (grid.amax(-1) * self.one_to_8).amax(-1, keepdim=True)
+        width = (grid.amax(-2) * self.one_to_8).amax(-1, keepdim=True)
+        in_bounds = (self.pos_row + height <= 8.0) & (self.pos_col + width <= 8.0)
+        free = ((piece.unsqueeze(-1) << self.pos) & board[..., None, None]) == 0
+        fits = (in_bounds & free).any(-1)
+        return ((piece != 0) & ~fits).sum(-1).float()
 
     def afterstates(
         self, obs: torch.Tensor
@@ -179,12 +216,13 @@ class AfterstateExtractor(BaseFeaturesExtractor):
             n_cells[bi, slot],
             obs[:, 4, 0, 0][bi] * 8.0,
         )
-        rest = planes[:, self.other_slots].reshape(b, 3, 128)  # hand after using each slot
-        rest_h = self.rest_in(rest).reshape(b * 3, -1)[bi * 3 + slot]
+        rest = planes[:, self.other_slots]  # (b, 3, 2, 64): hand after using each slot
+        rest_h = self.rest_in(rest.reshape(b, 3, 128)).reshape(b * 3, -1)[bi * 3 + slot]
         scalars = torch.stack([n_lines / 4.0, new_combo / 8.0, delta], dim=-1)
         h = torch.relu(self.after_in(after) + rest_h + self.scalar_in(scalars))
         h = torch.relu(self.hidden(h))
-        scores = self.head_out(h).squeeze(-1) + self.alpha * self._prior(after, delta)
+        prior = self._prior(after, delta, rest[bi, slot])
+        scores = self.head_out(h).squeeze(-1) + self.alpha * prior
         logits = obs.new_full((b * 192,), ILLEGAL_LOGIT).index_put((idx,), scores)
         return logits.reshape(b, 192)
 
@@ -196,12 +234,13 @@ class AfterstateExtractor(BaseFeaturesExtractor):
         n_cells = planes.sum(-1).repeat_interleave(64, dim=1)
         combo = obs[:, 4, 0, 0].unsqueeze(1) * 8.0
         after, n_lines, delta, new_combo = self._resolve(board, placed, n_cells, combo)
-        rest = planes[:, self.other_slots].reshape(b, 3, 128)
-        rest_h = self.rest_in(rest).repeat_interleave(64, dim=1)  # (b, 192, hidden)
+        rest = planes[:, self.other_slots]  # (b, 3, 2, 64)
+        rest_h = self.rest_in(rest.reshape(b, 3, 128)).repeat_interleave(64, dim=1)
         scalars = torch.stack([n_lines / 4.0, new_combo / 8.0, delta], dim=-1)
         h = torch.relu(self.after_in(after) + rest_h + self.scalar_in(scalars))
         h = torch.relu(self.hidden(h))
-        scores = self.head_out(h).squeeze(-1) + self.alpha * self._prior(after, delta)
+        prior = self._prior(after, delta, rest.repeat_interleave(64, dim=1))
+        scores = self.head_out(h).squeeze(-1) + self.alpha * prior
         return torch.where(self.legal(obs), scores, torch.full_like(scores, ILLEGAL_LOGIT))
 
     def forward(self, observations: torch.Tensor) -> torch.Tensor:

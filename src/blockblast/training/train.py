@@ -7,9 +7,11 @@ import logging
 import re
 from dataclasses import asdict
 from pathlib import Path
+from typing import Any
 
 from sb3_contrib import MaskablePPO
 
+from blockblast.agents.networks import AfterstateExtractor
 from blockblast.agents.ppo_agent import build_model
 from blockblast.training.callbacks import make_callbacks
 from blockblast.training.vec_env import env_kwargs_from_config, make_vec_env
@@ -46,6 +48,22 @@ def _resume_path(resume: str | None, model_dir: Path) -> Path | None:
     return path
 
 
+def resolve_prior(cfg: AppConfig) -> str:
+    if cfg.agent.prior != "auto":
+        return cfg.agent.prior
+    return "board" if cfg.reward.mode == "safe" else "score"
+
+
+def _apply_prior(model: MaskablePPO, prior: str) -> None:
+    """Switch a loaded afterstate model's greedy lean; it is saved with the model."""
+    extractors = [m for m in model.policy.modules() if isinstance(m, AfterstateExtractor)]
+    if not extractors:
+        raise ValueError(f"agent.prior={prior} needs the afterstate policy")
+    for ext in extractors:
+        ext.prior = prior
+    model.policy_kwargs.setdefault("features_extractor_kwargs", {})["prior"] = prior
+
+
 def train(cfg: AppConfig) -> Path:
     """Train (or resume) and return the saved model path.
 
@@ -68,10 +86,26 @@ def train(cfg: AppConfig) -> Path:
         env_kwargs, cfg.train.n_envs, cfg.seed, cfg.train.use_subproc, cfg.train.n_workers
     )
     if resume is not None:
-        model = MaskablePPO.load(
-            str(resume), env=vec_env, device=cfg.train.device, tensorboard_log=str(run_dir)
+        # gamma from the config replaces the saved one (it sets up the rollout buffer).
+        overrides: dict[str, Any] = (
+            {"gamma": float(cfg.agent.ppo["gamma"])} if "gamma" in cfg.agent.ppo else {}
         )
-        log.info("resumed %s from %s at %d steps", cfg.run_name, resume, model.num_timesteps)
+        model = MaskablePPO.load(
+            str(resume),
+            env=vec_env,
+            device=cfg.train.device,
+            tensorboard_log=str(run_dir),
+            **overrides,
+        )
+        if cfg.agent.prior != "auto":
+            _apply_prior(model, cfg.agent.prior)
+        log.info(
+            "resumed %s from %s at %d steps (gamma %s)",
+            cfg.run_name,
+            resume,
+            model.num_timesteps,
+            model.gamma,
+        )
     else:
         model = build_model(
             vec_env,
@@ -81,7 +115,7 @@ def train(cfg: AppConfig) -> Path:
             seed=cfg.seed,
             device=cfg.train.device,
             policy=cfg.agent.policy,
-            prior="board" if cfg.reward.mode == "safe" else "score",
+            prior=resolve_prior(cfg),
         )
     remaining = cfg.train.total_timesteps - model.num_timesteps
     log.info("training %s on %s: %d steps to go", cfg.run_name, model.device, max(remaining, 0))

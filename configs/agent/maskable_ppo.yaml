@@ -1,6 +1,7 @@
 name: maskable_ppo
 seed: 0
 policy: afterstate      # afterstate (scores each action's resulting board) | cnn (run ppo_v1)
+prior: auto             # greedy lean of the afterstate policy: auto (board if reward=safe, else score) | score | board | lookahead
 features_dim: 256       # CNN width: critic features (afterstate) or shared features (cnn)
 ppo:
   n_steps: 256            # per env; rollout = n_steps × train.n_envs = 16384

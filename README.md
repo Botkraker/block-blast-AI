@@ -8,7 +8,7 @@
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.x-EE4C2C?logo=pytorch&logoColor=white)](https://pytorch.org/)
 [![Gymnasium](https://img.shields.io/badge/Gymnasium-custom%20env-0081A5)](https://gymnasium.farama.org/)
 [![SB3-contrib](https://img.shields.io/badge/RL-MaskablePPO-8A2BE2)](https://sb3-contrib.readthedocs.io/)
-[![Tests](https://img.shields.io/badge/tests-179%20passing-2ea44f)](#-running-the-tests)
+[![Tests](https://img.shields.io/badge/tests-190%20passing-2ea44f)](#-running-the-tests)
 [![uv](https://img.shields.io/badge/deps-uv-DE5FE9)](https://docs.astral.sh/uv/)
 
 <img src="docs/images/gameplay.gif" alt="The trained AI playing a full game of Block Blast" width="300">
@@ -41,7 +41,7 @@
 Block Blast is a puzzle game: you drop blocks onto an 8×8 grid and clear full rows and columns. This project contains:
 
 1. **A faithful, deterministic game simulator**: the rules, written in pure Python and NumPy, with 100 % test coverage.
-2. **An AI agent trained with reinforcement learning (RL)**. Nobody tells it how to play. It plays millions of games, gets points as a reward, and slowly figures out what works.
+2. **An AI agent trained with reinforcement learning (RL)**. Nobody tells it how to play. It plays millions of games, gets rewarded for points (or, in "play safe" mode, for surviving), and slowly figures out what works. The current agent, **PPO v2**, scores **4.4× more than a greedy player**.
 3. **A playable game window**: play yourself, ask the AI for a hint, or sit back and watch it play.
 
 You don't need any machine-learning background to *play* with it. The [How the AI works](#-how-the-ai-works) section explains the ideas in plain words.
@@ -131,7 +131,7 @@ flowchart LR
     O --> N[Neural network<br/>policy]
     M[Legal-move mask<br/>192 actions] --> N
     N -->|pick a move:<br/>piece + row + col| G
-    G -->|reward = points| P[PPO update]
+    G -->|reward = points<br/>or survival| P[PPO update]
     P -->|improve| N
 ```
 
@@ -245,7 +245,18 @@ A move that clears the board keeps the whole point, and one that leaves it half 
 uv run python scripts/train.py run_name=ppo_safe reward=safe train.total_timesteps=40000000
 ```
 
-Compare it with v2 on **rounds survived** and **share of games reaching the 10,000-move cap**. The evaluation's `score` is still the real game score. All the numbers are in [`configs/reward/safe.yaml`](configs/reward/safe.yaml). *Status: implemented and tested, no full training run yet.*
+**Extra training options** (all off by default; they only change training, never the evaluation):
+
+| Option | What it does |
+|---|---|
+| `env.mid_start_prob=0.25` | Each game worker remembers crowded boards (24+ filled cells) from its earlier games and starts 25 % of new games from one, so the agent practises dangerous positions it rarely reaches otherwise |
+| `train.curriculum_steps=5000000` | Deals the hardest pieces (3×3 square, 1×5 lines) at a quarter of their normal rate at first (`train.curriculum_hard_start=0.25`), rising to the real game by step 5 M |
+| `agent.ppo.gamma=0.999` | Longer horizon: the agent weighs about 1,000 moves ahead, up from about 200 |
+| `agent.prior=lookahead` | Stronger starting lean: the emptiest board, minus a large penalty for each remaining hand piece that would fit nowhere |
+
+`gamma`, `agent.prior` and the env options also apply when resuming a run (`train.resume=...`).
+
+Compare it with v2 on **rounds survived** and **share of games reaching the 10,000-move cap**. The evaluation's `score` is still the real game score. All the numbers are in [`configs/reward/safe.yaml`](configs/reward/safe.yaml). *Status: first 22 M steps trained with the plain safe reward; now continuing to 40 M with mid-game starts, `gamma=0.999` and the lookahead lean.*
 
 All settings live in [`configs/`](configs/) ([Hydra](https://hydra.cc/)). Override anything from the command line, e.g. `agent.ppo.ent_coef=0.02` or `agent.policy=cnn`.
 
@@ -263,7 +274,7 @@ src/blockblast/
 └── utils/          # config, seeding, logging
 configs/            # Hydra YAML configs
 scripts/            # play, train, evaluate, replay, benchmark, make_readme_assets
-tests/              # 182 tests (engine, env, agents, training, evaluation, app)
+tests/              # 190 tests (engine, env, agents, training, evaluation, app)
 notebooks/          # Colab training notebook
 docs/images/        # README images (uv run --with matplotlib python scripts/make_readme_assets.py)
 ```
@@ -273,7 +284,7 @@ Design documents: [PRD](.claude/PRD.md) (goals and metrics), [architecture](.cla
 ## ✅ Running the tests
 
 ```bash
-uv run pytest                          # all 182 tests, about 40 s
+uv run pytest                          # all 190 tests, about 40 s
 uv run ruff check . && uv run mypy src # lint + strict type check
 uv run python scripts/benchmark_env.py # simulator speed (≈16,000 steps/s)
 ```

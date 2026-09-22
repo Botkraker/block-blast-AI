@@ -132,19 +132,28 @@ class Game:
     def score_config(self) -> ScoreConfig:
         return self._cfg
 
-    def reset(self, rng: np.random.Generator | int | None = None) -> GameState:
-        """Start a new game. An int or None seeds a fresh PCG64 generator."""
+    def reset(
+        self,
+        rng: np.random.Generator | int | None = None,
+        board: int = 0,
+        hard_weight: float = 1.0,
+    ) -> GameState:
+        """Start a new game. An int or None seeds a fresh PCG64 generator.
+
+        ``board`` starts from a non-empty board (training mid-game starts) and
+        ``hard_weight`` makes the hardest pieces rarer (curriculum); see ``PieceDealer``.
+        """
         gen = rng if isinstance(rng, np.random.Generator) else np.random.default_rng(rng)
-        self._dealer = PieceDealer(gen, len(PIECE_CATALOGUE))
+        self._dealer = PieceDealer(gen, len(PIECE_CATALOGUE), hard_weight)
         hand = self._dealer.deal()
         self._state = GameState(
-            board=0,
+            board=board,
             hand=hand,
             score=0,
             combo_streak=0,
             round_index=1,
             moves=0,
-            game_over=is_game_over(0, hand),
+            game_over=is_game_over(board, hand),
         )
         return self._state
 

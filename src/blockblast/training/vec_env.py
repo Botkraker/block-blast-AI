@@ -38,6 +38,8 @@ def env_kwargs_from_config(env: EnvConfig, reward: RewardSection) -> dict[str, A
         ),
         "score_config": ScoreConfig(env.points_per_cell, env.points_per_line),
         "max_steps": env.max_steps,
+        "mid_start_prob": env.mid_start_prob,
+        "mid_start_min_cells": env.mid_start_min_cells,
     }
 
 

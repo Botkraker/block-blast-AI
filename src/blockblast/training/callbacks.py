@@ -35,6 +35,33 @@ class GameMetricsCallback(BaseCallback):
         return True
 
 
+class CurriculumCallback(BaseCallback):
+    """Raises the hard-piece weight linearly from ``start`` (step 0) to 1.0 at ``steps``.
+
+    The schedule uses the global step count, so a resumed run continues on it. It is sent to
+    the envs before each rollout and applies to games that start afterwards.
+    """
+
+    def __init__(self, start: float, steps: int) -> None:
+        super().__init__()
+        self.start = start
+        self.steps = steps
+        self.current = -1.0
+
+    def weight(self, num_timesteps: int) -> float:
+        return min(1.0, self.start + (1.0 - self.start) * num_timesteps / self.steps)
+
+    def _on_rollout_start(self) -> None:
+        w = self.weight(self.num_timesteps)
+        if abs(w - self.current) > 1e-3:
+            self.training_env.set_attr("hard_piece_weight", w)
+            self.current = w
+        self.logger.record("curriculum/hard_piece_weight", w)
+
+    def _on_step(self) -> bool:
+        return True
+
+
 class PauseFileCallback(BaseCallback):
     """Stops training cleanly when ``pause_file`` appears (checked every ``check_every`` steps).
 
@@ -77,7 +104,9 @@ def make_callbacks(
     resumed: bool = False,
 ) -> tuple[CallbackList, PauseFileCallback]:
     n_envs = cfg.train.n_envs
-    eval_env = make_vec_env(env_kwargs, 1, VALIDATION_SEED_START, use_subproc=False)
+    # validation plays the real game: no mid-game starts (and the curriculum never reaches it)
+    eval_kwargs = {**env_kwargs, "mid_start_prob": 0.0}
+    eval_env = make_vec_env(eval_kwargs, 1, VALIDATION_SEED_START, use_subproc=False)
     eval_cb = MaskableEvalCallback(
         eval_env,
         n_eval_episodes=cfg.train.n_eval_episodes,
@@ -89,8 +118,14 @@ def make_callbacks(
     if resumed:
         restore_eval_history(eval_cb, run_dir)
     pause_cb = PauseFileCallback(model_dir / "PAUSE")
+    curriculum: list[BaseCallback] = []
+    if cfg.train.curriculum_steps > 0:
+        curriculum.append(
+            CurriculumCallback(cfg.train.curriculum_hard_start, cfg.train.curriculum_steps)
+        )
     callbacks = CallbackList(
         [
+            *curriculum,
             GameMetricsCallback(),
             eval_cb,
             CheckpointCallback(

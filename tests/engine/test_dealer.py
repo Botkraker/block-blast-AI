@@ -37,3 +37,19 @@ def test_distribution_is_uniform() -> None:
 def test_rejects_empty_catalogue() -> None:
     with pytest.raises(ValueError):
         PieceDealer(np.random.default_rng(0), n_pieces=0)
+
+
+def test_hard_weight_curriculum() -> None:
+    from blockblast.engine.dealer import HARD_PIECES
+
+    assert len(HARD_PIECES) == 3
+    none_hard = PieceDealer(np.random.default_rng(0), hard_weight=0.0)
+    assert not any(p in HARD_PIECES for _ in range(2000) for p in none_hard.deal())
+    # weight 1.0 is the real game: exactly the uniform draw sequence
+    real, uniform = (
+        PieceDealer(np.random.default_rng(3), hard_weight=1.0),
+        PieceDealer(np.random.default_rng(3)),
+    )
+    assert [real.deal() for _ in range(50)] == [uniform.deal() for _ in range(50)]
+    with pytest.raises(ValueError):
+        PieceDealer(np.random.default_rng(0), hard_weight=1.5)
