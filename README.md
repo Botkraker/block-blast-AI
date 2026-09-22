@@ -13,7 +13,7 @@
 
 <img src="docs/images/gameplay.gif" alt="The trained AI playing a full game of Block Blast" width="300">
 
-*The trained agent (PPO v2) scoring **1,163 points** in a game it never saw during training.*
+*The trained agent (PPO v2) scoring **2,389 points** in a game it never saw during training.*
 
 </div>
 
@@ -165,7 +165,7 @@ Every agent is scored on the **same 1,000 games** (fixed random seeds it never s
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/results_dark.png">
-  <img src="docs/images/results_light.png" alt="Bar chart of mean score on 1,000 held-out games: random 61, greedy 296, PPO v1 164, PPO v2 416; the target is 444" width="720">
+  <img src="docs/images/results_light.png" alt="Bar chart of mean score on 1,000 held-out games: random 61, greedy 296, PPO v1 164, PPO v2 1,299; the target is 444" width="720">
 </picture>
 
 | Agent | How it plays | Mean score | Rounds survived |
@@ -173,11 +173,11 @@ Every agent is scored on the **same 1,000 games** (fixed random seeds it never s
 | Random | Any legal move | 60.8 | 4.6 |
 | Greedy | The move with the most immediate points | 295.7 | 12.0 |
 | PPO v1 | CNN policy, 50 M training moves | 164.0 | 8.2 |
-| **PPO v2** | Afterstate policy, snapshot after 6 M of 40 M training moves | **416.2** | **15.4** |
+| **PPO v2** | Afterstate policy, 40 M training moves | **1,299.4** | **40.4** |
 
-PPO v2 beats greedy by **1.41×** on score (95 % CI of the difference: +102 to +139 points) and survives **28 % longer**. Its best game in this test scored **2,033**. Training is still running, and the final numbers will be updated here.
+PPO v2 scores **4.4× more than greedy** (95 % CI of the difference: +935 to +1,073 points) and **21× more than random**, and survives **3.4× as many rounds** as greedy. Half of its games score over 1,000, and its best game in this test scored **9,539**. It clears every success target in the [PRD](.claude/PRD.md).
 
-**Training progress.** v1 stalls early. v2 passes the greedy baseline after about 1.5 M moves and keeps climbing:
+**Training progress.** v1 stalls early. v2 passes the greedy baseline after about 1.5 M moves and is still climbing at 40 M:
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/training_dark.png">
@@ -292,7 +292,7 @@ Lower the batch size: `agent.ppo.batch_size=512`.
 
 ## ♾️ Next challenge: play forever
 
-Today the agent loses eventually. A typical game lasts about 15 rounds, and the best ones score over 2,000 points. **The next challenge is to make it play (almost) infinitely**: keep the board clean enough that a game never ends.
+Today the agent loses eventually. A typical game lasts about 31 rounds (40 on average), and the best ones score over 9,000 points. **The next challenge is to make it play (almost) infinitely**: keep the board clean enough that a game never ends.
 
 **Why it's hard.** Pieces are random, so perfect play can't be guaranteed. Three 3×3 squares on a crowded board can end any game. To survive forever, the agent has to keep the board so open that even the worst hand still fits. That means planning several rounds ahead rather than chasing points.
 
@@ -313,7 +313,7 @@ Today the agent loses eventually. A typical game lasts about 15 rounds, and the 
 - [x] Gymnasium env, random and greedy baselines, evaluation harness
 - [x] MaskablePPO training (v1 CNN, v2 afterstate policy)
 - [x] Playable game window with hints and AI autoplay
-- [ ] Final v2 evaluation against the targets (1.5 × greedy)
+- [x] Final v2 evaluation: 4.4× greedy on score, 3.4× on survival (targets 1.5×)
 - [ ] **Next challenge: play forever** (see above)
 - [ ] Play the real mobile/web game through screen capture (optional)
 

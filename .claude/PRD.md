@@ -118,9 +118,22 @@ Held-out seeds `1_000_000 … 1_000_999`, default configs, measured 2026-09-21 o
 | Greedy | 295.7 [285.8, 306.2] | 260 | 990 | 11.96 | 12.09 |
 | PPO v1 (CNN policy, 50M steps) | 164.0 [159.1, 168.9] | 151 | 571 | 8.18 | 6.11 |
 | PPO v2 (afterstate, snapshot at 6M of 40M) | 416.2 [401.5, 431.1] | 366 | 2033 | 15.37 | 17.10 |
+| **PPO v2 (afterstate, 40M, best_model)** | **1,299.4 [1,232.2, 1,367.4]** | 1,002 | 9,539 | **40.39** | 54.28 |
 
 Derived PPO targets: S6 mean score ≥ 443.6. S7 mean rounds ≥ 17.9. S9 mean score ≥ 608.
 
-Interim status (2026-09-22, v2 at 6M steps): S6 1.41× greedy (target 1.5×) not yet met. S7 1.28× greedy rounds (target 1.5×) not yet met. S8 passes (difference CI [102.4, 138.9] > 0). S9 6.8× random (target 10×) not yet met. Training continues to 40M steps.
+Final status (2026-09-22, v2 at 40M steps, `models/ppo_v2/best_model.zip`; `final.zip` gives 1,296.9 / 40.30, within noise):
 
-Next challenge (post-M4, not yet a milestone): near-infinite play, measured as the share of evaluation games reaching `max_steps = 10,000` (`truncated_frac`, currently 0 %).
+| Metric | Target | Result | Status |
+|---|---|---|---|
+| S6 score vs greedy | ≥ 1.5× | 4.39× | Pass |
+| S7 rounds vs greedy | ≥ 1.5× | 3.38× | Pass |
+| S8 difference CI | lower bound > 0 | [935.4, 1,072.5] | Pass |
+| S9 score vs random | ≥ 10× | 21.4× | Pass |
+| S10 training budget | ≤ 50M steps | 40M | Pass |
+| S11 replay fidelity | exact | `tests/env/test_replay.py` | Pass |
+| S12 eval reproducibility | identical | `tests/agents/test_ppo_smoke.py` | Pass |
+
+M4 is complete.
+
+Next challenge (post-M4, not yet a milestone): near-infinite play, measured as the share of evaluation games reaching `max_steps = 10,000` (`truncated_frac`, 0 % for v2 at 40M; median game 31 rounds).

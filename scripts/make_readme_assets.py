@@ -28,7 +28,6 @@ from blockblast.env.observation import encode_observation
 
 OUT = Path("docs/images")
 CHECKPOINTS = (
-    Path("models/ppo_v2/snapshot_6M.zip"),
     Path("models/ppo_v2/best_model.zip"),
     Path("models/ppo_v1/best_model.zip"),
 )
@@ -101,7 +100,7 @@ def downscale(img: np.ndarray, width: int) -> np.ndarray:
     return np.transpose(pygame.surfarray.array3d(small), (1, 0, 2))
 
 
-def pick_showcase_seed(agent: Agent, max_moves: int = 330) -> int:
+def pick_showcase_seed(agent: Agent, max_moves: int = 220) -> int:
     """Held-out seed where the agent plays its best game that still fits in the GIF."""
     best_seed, best_score = 1_000_000, -1
     for seed in range(1_000_000, 1_000_040):
@@ -118,17 +117,17 @@ def gameplay_gif(agent: Agent, label: str) -> None:
     seed = pick_showcase_seed(agent)
     app = BlockBlastApp(PlaySession(seed=seed), agent, AppOptions(True, False, seed, label, 3))
     frames, now = [], 0
-    while len(frames) < 420 and not app.session.state.game_over:
+    while len(frames) < 600 and not app.session.state.game_over:
         for _ in range(6):  # 100 ms per GIF frame
             now += 16
             app.update(now)
         app.draw()
-        frames.append(downscale(frame(app), 300))
+        frames.append(downscale(frame(app), 270))
     for _ in range(30):  # hold the game-over screen
         now += 100
         app.update(now)
         app.draw()
-        frames.append(downscale(frame(app), 300))
+        frames.append(downscale(frame(app), 270))
     save_image(OUT / "gameplay.gif", np.stack(frames), duration=100, loop=0)
 
 
@@ -213,7 +212,7 @@ def results_chart(plt) -> None:  # type: ignore[no-untyped-def]
         ("Random", "random_default"),
         ("Greedy", "greedy_default"),
         ("PPO v1\n(CNN policy)", "maskable_ppo_ppo_v1_best_model"),
-        ("PPO v2\n(afterstate)", "maskable_ppo_ppo_v2"),
+        ("PPO v2\n(afterstate)", "maskable_ppo_ppo_v2_best"),
     ]:
         p = Path(f"data/eval/{file}.json")
         if p.exists():
@@ -270,15 +269,24 @@ def results_chart(plt) -> None:  # type: ignore[no-untyped-def]
 def _scalars(run: str, tag: str) -> tuple[np.ndarray, np.ndarray] | None:
     from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
 
-    files = sorted(glob.glob(f"logs/{run}/**/events.out.tfevents.*", recursive=True))
-    if not files:
+    # One event file per training session (pause/resume). Stitch them in time order; a
+    # resumed session restarts from its checkpoint, so it replaces any later points of
+    # the previous session.
+    files = sorted(
+        glob.glob(f"logs/{run}/**/events.out.tfevents.*", recursive=True), key=os.path.getmtime
+    )
+    points: list[tuple[int, float]] = []
+    for f in files:
+        acc = EventAccumulator(f, size_guidance={"scalars": 0})
+        acc.Reload()
+        if tag not in acc.Tags()["scalars"]:
+            continue
+        new = [(p.step, p.value) for p in acc.Scalars(tag)]
+        if new:
+            points = [p for p in points if p[0] < new[0][0]] + new
+    if not points:
         return None
-    acc = EventAccumulator(files[-1], size_guidance={"scalars": 0})
-    acc.Reload()
-    if tag not in acc.Tags()["scalars"]:
-        return None
-    pts = acc.Scalars(tag)
-    return np.array([p.step for p in pts]) / 1e6, np.array([p.value for p in pts])
+    return np.array([s for s, _ in points]) / 1e6, np.array([v for _, v in points])
 
 
 def training_chart(plt) -> None:  # type: ignore[no-untyped-def]
@@ -324,7 +332,7 @@ def training_chart(plt) -> None:  # type: ignore[no-untyped-def]
         )
         ax.set_xlabel("Environment steps (millions)", color=m["muted"], fontsize=9)
         ax.set_ylabel("Training game score (rolling mean)", color=m["muted"], fontsize=9)
-        legend = ax.legend(frameon=False, loc="lower right", fontsize=9)
+        legend = ax.legend(frameon=False, loc="upper left", fontsize=9)
         for text in legend.get_texts():
             text.set_color(m["text"])
         ax.margins(x=0.12)
