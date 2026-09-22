@@ -1,0 +1,5 @@
+# r_t = Δscore_t / score_scale − game_over_penalty · 1[terminated_t]
+mode: score            # score | survival | sparse
+score_scale: 10.0
+game_over_penalty: 5.0
+sparse_scale: 100.0

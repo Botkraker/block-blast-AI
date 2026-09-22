@@ -1,0 +1,21 @@
+defaults:
+  - env: default
+  - reward: default
+  - agent: maskable_ppo
+  - train: default
+  - eval: default
+  - _self_
+
+seed: 0
+run_name: ${agent.name}_${now:%Y%m%d_%H%M%S}
+paths:
+  models: models
+  logs: logs
+  data: data
+
+hydra:
+  run:
+    dir: ${paths.logs}/${run_name}/hydra
+  job:
+    chdir: false
+  output_subdir: .hydra

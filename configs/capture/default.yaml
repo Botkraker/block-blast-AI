@@ -1,0 +1,6 @@
+# M5 (deferred, PRD Q6). Not part of the defaults list; used only by scripts/play_real.py.
+region: [0, 0, 0, 0]       # x, y, width, height of the game window
+grid_origin: [0, 0]        # pixel of board cell (0, 0) top-left, relative to region
+cell_px: 0
+hand_slots: [[0, 0], [0, 0], [0, 0]]
+drag_duration_s: 0.25

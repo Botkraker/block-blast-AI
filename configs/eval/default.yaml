@@ -1,0 +1,7 @@
+seed_start: 1000000   # held-out test seeds 1_000_000 … 1_000_999
+n_episodes: 1000
+checkpoint: null      # required for agent=maskable_ppo
+record_n: 5           # first N episodes saved to data/replays/
+deterministic: true
+tag: default
+compare_to: null      # path to another data/eval/*.json to compare against
