@@ -8,7 +8,7 @@ import pytest
 from gymnasium.utils.env_checker import check_env
 
 from blockblast.engine.game import InvalidMoveError
-from blockblast.env import BlockBlastEnv
+from blockblast.env import BlockBlastEnv, action_mask
 
 INFO_KEYS = {
     "score",
@@ -19,7 +19,6 @@ INFO_KEYS = {
     "combo_streak",
     "lines_total",
     "max_combo",
-    "action_mask",
 }
 
 
@@ -57,7 +56,7 @@ def test_reset_and_step_contract() -> None:
     assert info["score"] == 0 and info["round"] == 1
     mask = env.action_masks()
     assert mask.shape == (192,) and mask.dtype == np.bool_
-    np.testing.assert_array_equal(mask, info["action_mask"])
+    np.testing.assert_array_equal(mask, action_mask(env.game.state))
     a = int(np.flatnonzero(mask)[0])
     obs, reward, terminated, truncated, info = env.step(a)
     assert env.observation_space.contains(obs)

@@ -88,5 +88,4 @@ class BlockBlastEnv(gymnasium.Env[Obs, int]):
             "combo_streak": state.combo_streak,
             "lines_total": self._lines_total,
             "max_combo": self._max_combo,
-            "action_mask": self._mask.copy(),
         }

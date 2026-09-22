@@ -1,9 +1,10 @@
 total_timesteps: 50000000
-n_envs: 64                 # in-process envs; one batched GPU forward per step
-use_subproc: false         # SubprocVecEnv: every Windows worker re-imports torch (~0.5 GB) and
-                           # MaskablePPO adds a mask IPC round trip; the 60 µs env is faster in-process
+n_envs: 64                 # games played in parallel; one batched GPU forward per step
+use_subproc: true          # step the games in torch-free worker processes (ParallelVecEnv)
+n_workers: 8               # worker processes (each ~60 MB); leave cores for the main process
 checkpoint_freq: 2000000   # env steps
 eval_freq: 1000000         # env steps
 n_eval_episodes: 50        # validation seeds from 900_000
 device: auto               # cuda if available (GTX 1650 / Colab), else cpu
 deterministic_torch: false
+resume: null               # auto = continue from the latest models/<run_name>/ckpt_*; or a .zip path

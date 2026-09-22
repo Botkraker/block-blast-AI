@@ -8,11 +8,17 @@ from typing import Any
 
 import numpy as np
 import numpy.typing as npt
+import torch
 from sb3_contrib import MaskablePPO
 from stable_baselines3.common.vec_env import VecEnv
 
 from blockblast.agents.networks import AfterstatePolicy, BlockBlastCNN
 from blockblast.engine.game import GameState
+
+# Distribution argument validation re-checks every logits tensor on each action sample
+# and forces a GPU sync; the action mask already guarantees valid inputs. Profiling
+# showed it as the largest single cost of a PPO iteration.
+torch.distributions.Distribution.set_default_validate_args(False)
 
 
 def linear_schedule(initial: float) -> Callable[[float], float]:

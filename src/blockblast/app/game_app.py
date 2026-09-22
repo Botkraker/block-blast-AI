@@ -329,7 +329,7 @@ class BlockBlastApp:
         if pulse:
             alpha = 90 + int(80 * abs(((self.now // 8) % 100) - 50) / 50)
         glow = pygame.Surface((t.CELL, t.CELL), pygame.SRCALPHA)
-        glow.fill((*t.PIECE_COLORS[pid], 70))
+        glow.fill((*t.shade(t.PIECE_COLORS[pid], 1.3), 110))
         for line in preview.cleared_lines:
             for i in range(64):
                 if LINE_MASKS[line] >> i & 1:

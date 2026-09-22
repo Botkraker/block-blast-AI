@@ -39,12 +39,14 @@ class AgentConfig:
 class TrainConfig:
     total_timesteps: int = 50_000_000
     n_envs: int = 64
-    use_subproc: bool = False
+    use_subproc: bool = True
+    n_workers: int = 8
     checkpoint_freq: int = 2_000_000
     eval_freq: int = 1_000_000
     n_eval_episodes: int = 50
     device: str = "auto"
     deterministic_torch: bool = False
+    resume: str | None = None  # "auto" = latest models/<run_name>/ckpt_*, or a .zip path
 
 
 @dataclass
