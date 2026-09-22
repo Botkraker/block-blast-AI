@@ -24,6 +24,8 @@ class RewardSection:
     score_scale: float = 10.0
     game_over_penalty: float = 5.0
     sparse_scale: float = 100.0
+    alive_bonus: float = 1.0
+    board_weight: float = 1.0
 
 
 @dataclass

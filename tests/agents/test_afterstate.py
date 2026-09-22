@@ -156,6 +156,20 @@ def test_initial_policy_leans_greedy() -> None:
     assert torch.isclose(logits[8], torch.tensor(0.1))
 
 
+@pytest.mark.parametrize("compact", [True, False])
+def test_board_prior_prefers_empty_board(compact: bool) -> None:
+    """``prior="board"``: logits ≈ −filled cells/8 after the move, dense and compact alike."""
+    ext = AfterstateExtractor(observation_space(), hidden=16, value_dim=8, prior="board")
+    torch.nn.init.zeros_(ext.head_out.weight)
+    torch.nn.init.zeros_(ext.head_out.bias)
+    obs = torch.zeros(1, 5, 8, 8)
+    obs[0, 0, 0, :7] = 1.0  # row 0 missing (0, 7)
+    obs[0, 1, 0, 0] = 1.0  # slot 0: mono
+    logits = ext.action_logits(obs, compact=compact)[0]
+    assert torch.isclose(logits[7], torch.tensor(0.0))  # clears the row: empty board
+    assert torch.isclose(logits[8], torch.tensor(-1.0))  # 8 cells left
+
+
 def test_policy_outputs_192_logits() -> None:
     policy = AfterstatePolicy(
         observation_space(),

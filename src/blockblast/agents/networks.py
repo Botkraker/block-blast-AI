@@ -61,8 +61,10 @@ class AfterstateExtractor(BaseFeaturesExtractor):
     For every (slot, row, col) the resulting board is computed in torch (place, then clear
     full rows/columns simultaneously), mirroring ``engine`` rules. A shared MLP scores
     ``(afterstate, remaining hand, lines, new combo, Δscore)``; the logit adds
-    ``alpha · Δscore/10`` so the initial policy leans toward the greedy baseline. Illegal
-    actions produce meaningless logits and are removed by the action mask.
+    ``alpha · prior`` so the initial policy leans toward a greedy rule: ``prior="score"``
+    uses Δscore/10 (most points), ``prior="board"`` uses −filled cells/8 (emptiest board,
+    for the ``safe`` reward). Illegal actions produce meaningless logits and are removed by
+    the action mask.
 
     Output: ``[192 action logits | value_dim CNN features of the current state]``.
     """
@@ -73,9 +75,16 @@ class AfterstateExtractor(BaseFeaturesExtractor):
     other_slots: torch.Tensor
 
     def __init__(
-        self, observation_space: gymnasium.spaces.Box, hidden: int = 128, value_dim: int = 256
+        self,
+        observation_space: gymnasium.spaces.Box,
+        hidden: int = 128,
+        value_dim: int = 256,
+        prior: str = "score",
     ) -> None:
         super().__init__(observation_space, 192 + value_dim)
+        if prior not in ("score", "board"):
+            raise ValueError(f"unknown prior {prior!r}")
+        self.prior = prior
         shift = _shift_matrix()
         self.register_buffer("shift", shift, persistent=False)
         # (tgt, src·pos) and (src, pos) views of the same map, for the legality counts
@@ -116,6 +125,9 @@ class AfterstateExtractor(BaseFeaturesExtractor):
         delta = (n_cells + 10.0 * n_lines * (1.0 + combo)) / 10.0
         new_combo = torch.where(n_lines > 0, torch.clamp(combo + 1.0, max=8.0), 0.0)
         return after, n_lines, delta, new_combo
+
+    def _prior(self, after: torch.Tensor, delta: torch.Tensor) -> torch.Tensor:
+        return delta if self.prior == "score" else after.sum(-1) / -8.0
 
     def afterstates(
         self, obs: torch.Tensor
@@ -172,7 +184,7 @@ class AfterstateExtractor(BaseFeaturesExtractor):
         scalars = torch.stack([n_lines / 4.0, new_combo / 8.0, delta], dim=-1)
         h = torch.relu(self.after_in(after) + rest_h + self.scalar_in(scalars))
         h = torch.relu(self.hidden(h))
-        scores = self.head_out(h).squeeze(-1) + self.alpha * delta
+        scores = self.head_out(h).squeeze(-1) + self.alpha * self._prior(after, delta)
         logits = obs.new_full((b * 192,), ILLEGAL_LOGIT).index_put((idx,), scores)
         return logits.reshape(b, 192)
 
@@ -189,7 +201,7 @@ class AfterstateExtractor(BaseFeaturesExtractor):
         scalars = torch.stack([n_lines / 4.0, new_combo / 8.0, delta], dim=-1)
         h = torch.relu(self.after_in(after) + rest_h + self.scalar_in(scalars))
         h = torch.relu(self.hidden(h))
-        scores = self.head_out(h).squeeze(-1) + self.alpha * delta
+        scores = self.head_out(h).squeeze(-1) + self.alpha * self._prior(after, delta)
         return torch.where(self.legal(obs), scores, torch.full_like(scores, ILLEGAL_LOGIT))
 
     def forward(self, observations: torch.Tensor) -> torch.Tensor:

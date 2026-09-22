@@ -45,3 +45,12 @@ def test_truncation_not_penalized_in_env() -> None:
     _, reward, terminated, truncated, info = env.step(a)
     assert truncated and not terminated
     assert reward == pytest.approx(info["score_delta"] / 10)
+
+
+def test_safe_mode_rewards_empty_board() -> None:
+    cfg = RewardConfig(mode="safe")
+    empty = MoveResult(make_state(board=0), 50, 4, 1, (0,), False)
+    half = MoveResult(make_state(board=(1 << 32) - 1), 0, 4, 0, (), False)
+    assert compute_reward(empty, False, cfg) == 1.0
+    assert compute_reward(half, False, cfg) == pytest.approx(0.5)
+    assert compute_reward(half, True, cfg) == pytest.approx(0.5 - 5.0)

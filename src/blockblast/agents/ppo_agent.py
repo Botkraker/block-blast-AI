@@ -38,11 +38,13 @@ def build_model(
     seed: int = 0,
     device: str = "auto",
     policy: str = "afterstate",
+    prior: str = "score",
 ) -> MaskablePPO:
     """Create a MaskablePPO.
 
     ``policy="afterstate"`` (default) uses ``AfterstatePolicy``: logits from the exact
-    board each action produces; ``net_arch["vf"]`` sizes the critic MLP.
+    board each action produces; ``net_arch["vf"]`` sizes the critic MLP and ``prior``
+    ("score" | "board") picks its greedy starting bias.
     ``policy="cnn"`` uses the plain CNN extractor with ``net_arch`` pi/vf MLPs (run ppo_v1).
     ``ppo_kwargs`` holds MaskablePPO arguments; ``learning_rate`` decays linearly to 0.
     """
@@ -53,7 +55,7 @@ def build_model(
     if policy == "afterstate":
         policy_cls = AfterstatePolicy
         policy_kwargs: dict[str, Any] = {
-            "features_extractor_kwargs": {"value_dim": features_dim},
+            "features_extractor_kwargs": {"value_dim": features_dim, "prior": prior},
             "vf_arch": list(net_arch.get("vf", [256])),
         }
     elif policy == "cnn":

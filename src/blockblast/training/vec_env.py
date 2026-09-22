@@ -33,6 +33,8 @@ def env_kwargs_from_config(env: EnvConfig, reward: RewardSection) -> dict[str, A
             score_scale=reward.score_scale,
             game_over_penalty=reward.game_over_penalty,
             sparse_scale=reward.sparse_scale,
+            alive_bonus=reward.alive_bonus,
+            board_weight=reward.board_weight,
         ),
         "score_config": ScoreConfig(env.points_per_cell, env.points_per_line),
         "max_steps": env.max_steps,

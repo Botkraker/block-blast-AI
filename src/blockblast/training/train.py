@@ -81,6 +81,7 @@ def train(cfg: AppConfig) -> Path:
             seed=cfg.seed,
             device=cfg.train.device,
             policy=cfg.agent.policy,
+            prior="board" if cfg.reward.mode == "safe" else "score",
         )
     remaining = cfg.train.total_timesteps - model.num_timesteps
     log.info("training %s on %s: %d steps to go", cfg.run_name, model.device, max(remaining, 0))

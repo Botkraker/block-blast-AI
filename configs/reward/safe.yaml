@@ -1,0 +1,9 @@
+# Play safe: survive and keep the board empty, points are a side effect.
+# r_t = alive_bonus − board_weight · filled_cells_t / 64 − game_over_penalty · 1[terminated_t]
+# The afterstate policy's prior switches to "fewest filled cells" (train.py).
+mode: safe
+score_scale: 10.0
+game_over_penalty: 20.0
+sparse_scale: 100.0
+alive_bonus: 1.0
+board_weight: 1.0
