@@ -123,7 +123,7 @@ Best scores are saved separately for you and for the AI in `data/app/`.
 
 ### Reinforcement learning, in one paragraph
 
-The agent looks at the game, picks a move, and receives a **reward**: the points that move earned, minus a penalty when the game ends. Early on its moves are random. After each batch of games, an algorithm called **PPO** (Proximal Policy Optimization) nudges its neural network toward the moves that led to more reward over the long run. After tens of millions of moves, it plays well. Invalid moves (overlapping blocks, falling off the board) are **masked out**, so the agent only ever picks among legal ones (**MaskablePPO**).
+The agent looks at the game, picks a move, and receives a **reward**: the points that move earned, minus a penalty when the game ends. Early on its moves are random. After each batch of games, an algorithm called **PPO** (Proximal Policy Optimization) nudges its neural network toward the moves that led to more reward over the long run. After tens of millions of moves, it plays well. Invalid moves (overlapping blocks, falling off the board) are **masked out**, so the agent only ever picks among legal ones (**MaskablePPO**). The reward can also be switched to ["play safe"](#-train-a-play-safe-agent), where the agent gets nothing for points and is paid for staying alive with an empty board.
 
 ```mermaid
 flowchart LR
@@ -231,6 +231,22 @@ uv run python scripts/replay.py data/replays/greedy_seed1000000.json --gif greed
 | CPU only | ~600 steps/s | Works; use fewer steps for experiments |
 | Google Colab (free GPU) | similar to a local GPU | Open [`notebooks/train_colab.ipynb`](notebooks/train_colab.ipynb) |
 
+### 🛡️ Train a "play safe" agent
+
+By default the agent is rewarded for **points**. The `safe` reward teaches it to **survive** instead. Every move it stays alive earns up to 1 point, reduced by how full the board is, and losing costs 20:
+
+```
+reward per move = 1 − (filled cells ÷ 64) − 20 if the game just ended
+```
+
+A move that clears the board keeps the whole point, and one that leaves it half full keeps 0.5. Points in the game don't count directly. The idea is that an agent that keeps the board empty lives longer and ends up scoring more anyway. With this reward, the agent also starts from a different built-in lean: before it learns anything, it prefers the move that leaves the **fewest filled cells**, where the default agent prefers the move that scores the most points.
+
+```bash
+uv run python scripts/train.py run_name=ppo_safe reward=safe train.total_timesteps=40000000
+```
+
+Compare it with v2 on **rounds survived** and **share of games reaching the 10,000-move cap**. The evaluation's `score` is still the real game score. All the numbers are in [`configs/reward/safe.yaml`](configs/reward/safe.yaml). *Status: implemented and tested, no full training run yet.*
+
 All settings live in [`configs/`](configs/) ([Hydra](https://hydra.cc/)). Override anything from the command line, e.g. `agent.ppo.ent_coef=0.02` or `agent.policy=cnn`.
 
 ## 🗂️ Project structure
@@ -247,7 +263,7 @@ src/blockblast/
 └── utils/          # config, seeding, logging
 configs/            # Hydra YAML configs
 scripts/            # play, train, evaluate, replay, benchmark, make_readme_assets
-tests/              # 179 tests (engine, env, agents, training, evaluation, app)
+tests/              # 182 tests (engine, env, agents, training, evaluation, app)
 notebooks/          # Colab training notebook
 docs/images/        # README images (uv run --with matplotlib python scripts/make_readme_assets.py)
 ```
@@ -257,7 +273,7 @@ Design documents: [PRD](.claude/PRD.md) (goals and metrics), [architecture](.cla
 ## ✅ Running the tests
 
 ```bash
-uv run pytest                          # all 179 tests, about 40 s
+uv run pytest                          # all 182 tests, about 40 s
 uv run ruff check . && uv run mypy src # lint + strict type check
 uv run python scripts/benchmark_env.py # simulator speed (≈16,000 steps/s)
 ```
@@ -303,7 +319,7 @@ Today the agent loses eventually. A typical game lasts about 31 rounds (40 on av
 | Idea | Why it should help |
 |---|---|
 | Look ahead over the whole hand (all 6 orders × placements of the 3 pieces) | Avoids placing piece 1 somewhere that blocks pieces 2 and 3 |
-| Reward survival, not just points (`reward.mode=survival`) and a longer horizon (`gamma=0.999`) | Makes "stay alive" the goal instead of "score now" |
+| ✅ **Built:** reward survival and an empty board, not points (`reward=safe`, [see above](#-train-a-play-safe-agent)). Next: train it, and try a longer horizon (`gamma=0.999`) | Makes "stay alive" the goal instead of "score now" |
 | Worst-case hand check: penalize boards where a 3×3 or 1×5 no longer fits | Teaches the agent to keep space for the most awkward pieces |
 | Train much longer, with curriculum on harder deals | Long games are rare early in training, so the agent sees few of them |
 
@@ -314,6 +330,9 @@ Today the agent loses eventually. A typical game lasts about 31 rounds (40 on av
 - [x] MaskablePPO training (v1 CNN, v2 afterstate policy)
 - [x] Playable game window with hints and AI autoplay
 - [x] Final v2 evaluation: 4.4× greedy on score, 3.4× on survival (targets 1.5×)
+- [x] Faster training: ~2,400 → ~4,300 steps/s on a GTX 1650, plus pause/resume
+- [x] "Play safe" reward (`reward=safe`): survival and board emptiness instead of points
+- [ ] Train and evaluate the play-safe agent against v2
 - [ ] **Next challenge: play forever** (see above)
 - [ ] Play the real mobile/web game through screen capture (optional)
 
