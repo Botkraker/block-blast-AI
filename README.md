@@ -8,12 +8,12 @@
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.x-EE4C2C?logo=pytorch&logoColor=white)](https://pytorch.org/)
 [![Gymnasium](https://img.shields.io/badge/Gymnasium-custom%20env-0081A5)](https://gymnasium.farama.org/)
 [![SB3-contrib](https://img.shields.io/badge/RL-MaskablePPO-8A2BE2)](https://sb3-contrib.readthedocs.io/)
-[![Tests](https://img.shields.io/badge/tests-168%20passing-2ea44f)](#-running-the-tests)
+[![Tests](https://img.shields.io/badge/tests-179%20passing-2ea44f)](#-running-the-tests)
 [![uv](https://img.shields.io/badge/deps-uv-DE5FE9)](https://docs.astral.sh/uv/)
 
 <img src="docs/images/gameplay.gif" alt="The trained AI playing a full game of Block Blast" width="300">
 
-*The trained agent playing a full game in the built-in game window.*
+*The trained agent (PPO v2) scoring **1,163 points** in a game it never saw during training.*
 
 </div>
 
@@ -31,8 +31,8 @@
 - [Project structure](#-project-structure)
 - [Running the tests](#-running-the-tests)
 - [Troubleshooting](#-troubleshooting)
+- [Next challenge: play forever](#-next-challenge-play-forever)
 - [Roadmap](#-roadmap)
-- [Contributing](#-contributing)
 
 ---
 
@@ -165,7 +165,7 @@ Every agent is scored on the **same 1,000 games** (fixed random seeds it never s
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/results_dark.png">
-  <img src="docs/images/results_light.png" alt="Bar chart of mean score on 1,000 held-out games: random 61, greedy 296, PPO v1 164; the target is 444" width="720">
+  <img src="docs/images/results_light.png" alt="Bar chart of mean score on 1,000 held-out games: random 61, greedy 296, PPO v1 164, PPO v2 416; the target is 444" width="720">
 </picture>
 
 | Agent | How it plays | Mean score | Rounds survived |
@@ -173,7 +173,9 @@ Every agent is scored on the **same 1,000 games** (fixed random seeds it never s
 | Random | Any legal move | 60.8 | 4.6 |
 | Greedy | The move with the most immediate points | 295.7 | 12.0 |
 | PPO v1 | CNN policy, 50 M training moves | 164.0 | 8.2 |
-| PPO v2 | Afterstate policy | ⏳ *training (final numbers coming)* | ⏳ |
+| **PPO v2** | Afterstate policy, snapshot after 6 M of 40 M training moves | **416.2** | **15.4** |
+
+PPO v2 beats greedy by **1.41×** on score (95 % CI of the difference: +102 to +139 points) and survives **28 % longer**. Its best game in this test scored **2,033**. Training is still running, and the final numbers will be updated here.
 
 **Training progress.** v1 stalls early. v2 passes the greedy baseline after about 1.5 M moves and keeps climbing:
 
@@ -192,6 +194,24 @@ uv run python scripts/train.py train.total_timesteps=2000000     # quick 2M-step
 uv run tensorboard --logdir logs                                 # live charts at http://localhost:6006
 ```
 
+### ⏸️ Pause and resume
+
+Training takes hours, but you don't have to finish in one go:
+
+| To... | Do this |
+|---|---|
+| **Pause** (training in a terminal) | Press <kbd>Ctrl</kbd>+<kbd>C</kbd> |
+| **Pause** (training in the background) | Create a file named `PAUSE` in the run's model folder. PowerShell: `New-Item models/<run>/PAUSE`. macOS/Linux: `touch models/<run>/PAUSE` |
+| **Resume** | Run the **same command again** and add `train.resume=auto` |
+
+```bash
+uv run python scripts/train.py run_name=my_run train.resume=auto
+```
+
+When paused, the current model is saved as `models/<run>/ckpt_<steps>_steps.zip` at the exact step. Resuming loads the newest checkpoint and continues where it stopped: the step counter, the learning-rate schedule, the TensorBoard curve and the "best model so far" all carry on. If the computer crashes or loses power, nothing is saved at that moment, and you lose at most the last 2 M steps (~15 min), because a checkpoint is written every `train.checkpoint_freq` steps.
+
+> Keep the same `run_name` and `train.total_timesteps` when you resume. `train.resume=path/to/ckpt.zip` resumes from a specific checkpoint.
+
 Evaluate a checkpoint on the 1,000 held-out games and compare it with greedy:
 
 ```bash
@@ -207,7 +227,7 @@ uv run python scripts/replay.py data/replays/greedy_seed1000000.json --gif greed
 
 | Where | Speed | Notes |
 |---|---|---|
-| Local NVIDIA GPU (GTX 1650) | ~2,000–4,000 steps/s | CUDA is picked automatically (`train.device=auto`) |
+| Local NVIDIA GPU (GTX 1650) | ~4,300 steps/s (afterstate policy, defaults) | CUDA is picked automatically (`train.device=auto`) |
 | CPU only | ~600 steps/s | Works; use fewer steps for experiments |
 | Google Colab (free GPU) | similar to a local GPU | Open [`notebooks/train_colab.ipynb`](notebooks/train_colab.ipynb) |
 
@@ -227,9 +247,9 @@ src/blockblast/
 └── utils/          # config, seeding, logging
 configs/            # Hydra YAML configs
 scripts/            # play, train, evaluate, replay, benchmark, make_readme_assets
-tests/              # 168 tests (engine, env, agents, evaluation, app)
+tests/              # 179 tests (engine, env, agents, training, evaluation, app)
 notebooks/          # Colab training notebook
-docs/images/        # README images (regenerate: see below)
+docs/images/        # README images (uv run --with matplotlib python scripts/make_readme_assets.py)
 ```
 
 Design documents: [PRD](.claude/PRD.md) (goals and metrics), [architecture](.claude/ARCHITECTURE.md) (full design), [essentials](.claude/ARCHITECTURE-ESSENTIALS.md) (one-page invariants), [agent rules](.claude/AGENTS.md) (conventions for AI coding agents).
@@ -237,7 +257,7 @@ Design documents: [PRD](.claude/PRD.md) (goals and metrics), [architecture](.cla
 ## ✅ Running the tests
 
 ```bash
-uv run pytest                          # all 168 tests, about 30 s
+uv run pytest                          # all 179 tests, about 40 s
 uv run ruff check . && uv run mypy src # lint + strict type check
 uv run python scripts/benchmark_env.py # simulator speed (≈16,000 steps/s)
 ```
@@ -259,9 +279,9 @@ Check with `uv run python -c "import torch; print(torch.cuda.is_available())"`. 
 </details>
 
 <details>
-<summary><b>Training freezes on Windows with <code>train.use_subproc=true</code></b></summary>
+<summary><b>Training uses lots of RAM or freezes on Windows with <code>train.use_subproc=true</code></b></summary>
 
-On Windows every worker process loads its own copy of PyTorch (~0.5 GB each). Keep the default `use_subproc=false`: the simulator is fast enough that running all environments in one process is actually quicker.
+The games run in 8 small worker processes (~36 MB each) that never import PyTorch. If the log warns `env workers imported torch`, a script imports the training stack at module level: on Windows each worker re-runs the script's top-level imports, so move those imports inside `main()` (see `scripts/train.py`). `train.use_subproc=false` runs all games in the main process instead, about 15 % slower.
 </details>
 
 <details>
@@ -270,28 +290,32 @@ On Windows every worker process loads its own copy of PyTorch (~0.5 GB each). Ke
 Lower the batch size: `agent.ppo.batch_size=512`.
 </details>
 
+## ♾️ Next challenge: play forever
+
+Today the agent loses eventually. A typical game lasts about 15 rounds, and the best ones score over 2,000 points. **The next challenge is to make it play (almost) infinitely**: keep the board clean enough that a game never ends.
+
+**Why it's hard.** Pieces are random, so perfect play can't be guaranteed. Three 3×3 squares on a crowded board can end any game. To survive forever, the agent has to keep the board so open that even the worst hand still fits. That means planning several rounds ahead rather than chasing points.
+
+**How we'll measure it.** Games are capped at 10,000 moves. The new headline metric is the **share of games that reach the cap** (`truncated_frac` in the evaluation output, 0 % today), next to median game length.
+
+**Ideas we plan to try:**
+
+| Idea | Why it should help |
+|---|---|
+| Look ahead over the whole hand (all 6 orders × placements of the 3 pieces) | Avoids placing piece 1 somewhere that blocks pieces 2 and 3 |
+| Reward survival, not just points (`reward.mode=survival`) and a longer horizon (`gamma=0.999`) | Makes "stay alive" the goal instead of "score now" |
+| Worst-case hand check: penalize boards where a 3×3 or 1×5 no longer fits | Teaches the agent to keep space for the most awkward pieces |
+| Train much longer, with curriculum on harder deals | Long games are rare early in training, so the agent sees few of them |
+
 ## 🗺️ Roadmap
 
 - [x] Deterministic simulator with full test coverage
 - [x] Gymnasium env, random and greedy baselines, evaluation harness
 - [x] MaskablePPO training (v1 CNN, v2 afterstate policy)
 - [x] Playable game window with hints and AI autoplay
-- [ ] Final v2 evaluation against the targets
+- [ ] Final v2 evaluation against the targets (1.5 × greedy)
+- [ ] **Next challenge: play forever** (see above)
 - [ ] Play the real mobile/web game through screen capture (optional)
-
-## 🤝 Contributing
-
-Issues and pull requests are welcome. Before you start:
-
-1. Read [`.claude/AGENTS.md`](.claude/AGENTS.md) for the conventions (it applies to humans too).
-2. Keep `uv run pytest`, `ruff` and `mypy` green.
-3. The observation, action space and reward are **invariants**. Changing them means updating [`.claude/ARCHITECTURE-ESSENTIALS.md`](.claude/ARCHITECTURE-ESSENTIALS.md) in the same pull request.
-
-Regenerate the README images after training a new model:
-
-```bash
-uv run --with matplotlib python scripts/make_readme_assets.py
-```
 
 ---
 
