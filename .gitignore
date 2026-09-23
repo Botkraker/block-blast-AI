@@ -14,5 +14,9 @@ models/*
 data/**/*
 !logs/.gitkeep
 !models/.gitkeep
+# ship only the trained agent (~16 MB), not the other checkpoints
+!models/ppo_safe/
+models/ppo_safe/*
+!models/ppo_safe/final.zip
 !data/*/
 !data/**/.gitkeep

@@ -88,7 +88,7 @@ Then play:
 uv run python scripts/play.py
 ```
 
-That's it. There is nothing to train first: without a trained model the AI features fall back to a simple greedy player.
+That's it. The trained agent ships with the repo at `models/ppo_safe/final.zip`, so the hints and autoplay work straight after cloning. Without it they fall back to a simple greedy player.
 
 > No NVIDIA GPU? Everything still works, including playing, evaluating and training. Training is just slower. On Linux and Windows, `uv sync` installs the CUDA build of PyTorch, which also runs on CPU.
 
@@ -96,7 +96,7 @@ That's it. There is nothing to train first: without a trained model the AI featu
 
 ```bash
 uv run python scripts/play.py                  # you play
-uv run python scripts/play.py --watch --loop   # watch the AI play, game after game
+uv run python scripts/play.py --watch --loop   # watch the trained AI play, game after game
 ```
 
 | Control | What it does |

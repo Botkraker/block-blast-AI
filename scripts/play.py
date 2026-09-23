@@ -3,7 +3,7 @@
 uv run python scripts/play.py                 # you play; H = hint, A = let the AI play
 uv run python scripts/play.py --watch         # the AI plays (Space pause, +/- speed)
 uv run python scripts/play.py --watch --loop --agent greedy
-uv run python scripts/play.py --agent ppo --checkpoint models/ppo_v2/best_model.zip
+uv run python scripts/play.py --agent ppo --checkpoint models/ppo_safe/final.zip
 """
 
 from __future__ import annotations
@@ -14,7 +14,11 @@ from pathlib import Path
 from blockblast.agents import Agent, GreedyAgent, RandomAgent
 from blockblast.app import PlaySession
 
-DEFAULT_CHECKPOINTS = (Path("models/ppo_v2/best_model.zip"), Path("models/ppo_v1/best_model.zip"))
+DEFAULT_CHECKPOINTS = (
+    Path("models/ppo_safe/final.zip"),  # ships with the repo
+    Path("models/ppo_v2/best_model.zip"),
+    Path("models/ppo_v1/best_model.zip"),
+)
 
 
 def build_agent(name: str, checkpoint: Path | None) -> tuple[Agent | None, str]:
